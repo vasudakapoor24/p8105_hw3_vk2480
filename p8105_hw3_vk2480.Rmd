@@ -1,0 +1,160 @@
+---
+title: "Homework 3"
+author: "Vasuda Kapoor"
+output: github_document
+date: '2022-10-13'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Library calls
+```{r}
+library(tidyverse)
+library(ggridges)
+library(patchwork)
+library(devtools)
+library(hexbin)
+```
+
+# Problem 1
+```{r}
+#devtools::install_github("p8105/p8105.datasets", force = TRUE, INSTALL_opts = c('--no-lock'))
+library(p8105.datasets)
+#instacart_df = data("instacart") %>%
+  #janitor::clean_names()
+
+#n_aisle = instacart_df %>%
+  #summarise(
+    #aisle_dist = n_distinct(aisle))
+#n_aisle
+```
+
+
+
+# Problem 2
+##Load, tidy, and otherwise wrangle the data. Your final dataset should include all originally observed variables and values; have useful variable names; include a weekday vs weekend variable; and encode data with reasonable variable classes. Describe the resulting dataset (e.g. what variables exist, how many observations, etc).
+```{r}
+# Load data and clean names
+accel_df = read_csv("data/accel_data.csv") %>%
+  janitor::clean_names()
+
+accel_df2 = read_csv("data/accel_data.csv") %>%
+  janitor::clean_names()
+
+# pivot the activity values from wide to long and convert minute column to numerical type
+accel_df = 
+  pivot_longer(
+    accel_df, 
+    activity_1:activity_1440,
+    names_to = "minute",
+    values_to = "activity_value",
+    names_prefix = "activity_"
+  ) %>% 
+  mutate(minute = as.numeric(minute))
+  
+
+# Add weekday vs weekend variable
+accel_df = accel_df %>%
+  mutate(weekend = if_else(day == "Saturday" | day == "Sunday", TRUE, FALSE))
+```
+##Traditional analyses of accelerometer data focus on the total activity over the day. Using your tidied dataset, aggregate across minutes to create a total activity variable for each day, and create a table showing these totals. Are any trends apparent?
+```{r}
+
+total_activity_tbl = accel_df %>%
+  group_by(day, week) %>%
+  summarise(total_activity = sum(activity_value)) %>%
+  pivot_wider(
+    names_from = day,
+    values_from = total_activity
+  ) %>%
+  select(week, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday) %>%
+  knitr::kable()
+total_activity_tbl
+# Are any trends apparent?
+# Doesn't seem like there are any trends based on weekday/weekend
+#ANSWER THIS!!
+```
+##Accelerometer data allows the inspection activity over the course of the day. Make a single-panel plot that shows the 24-hour activity time courses for each day and use color to indicate day of the week. Describe in words any patterns or conclusions you can make based on this graph.
+```{r}
+# x axis: minute 1 to 1440
+activity_plot =
+  accel_df %>%
+  ggplot(aes(x = minute, y = activity_value, color = day)) +
+  geom_line(alpha = .4) +
+  geom_smooth(se = FALSE)
+activity_plot
+
+```
+It looks like the activity increases gradually over the course of the day, plateaus around minute 750 and then starts falling down again around minute 1250. 
+On Sundays, the activity increases disproportionately around minute 600 and on Fridays, the activity increases disproportionately around minute 1250. 
+
+# Problem 3
+
+##Describe dataset. 
+```{r}
+library(p8105.datasets)
+data("ny_noaa") 
+# DESCRIBE!!!
+```
+
+##Do some data cleaning. Create separate variables for year, month, and day. Ensure observations for temperature, precipitation, and snowfall are given in reasonable units. 
+```{r}
+ny_noaa_tidy = ny_noaa %>%
+  janitor::clean_names() %>%
+  separate(date, into = c("year", "month", "day"), sep = "-") %>%
+  mutate(tmax = as.numeric(tmax),
+         tmin = as.numeric(tmin),
+         year = as.numeric(year)) %>%
+  mutate(tmax = tmax/10,
+         tmin = tmin/10)
+```
+
+##For snowfall, what are the most commonly observed values? Why?
+```{r}
+snwfall_stats <- ny_noaa_tidy %>%
+  group_by(snow) %>%
+  summarise(
+    count = n()
+  ) %>%
+  arrange(desc(count))
+snwfall_stats
+```
+The most commonly observed values are 0 and missing. This is probably because (1) It does not snow on a majority of the days during the year (2) Snowfall data is not collected for a significant number of days during the day. 
+
+##Make a two-panel plot showing the average max temperature in January and in July in each station across years. Is there any observable / interpretable structure? Any outliers?
+```{r}
+avgtmax_df <- ny_noaa_tidy %>%
+  group_by(id, year, month) %>%
+  filter(month == "01" | month == "07") %>%
+  summarise(avg_max_temp = mean(tmax, NA.rm = TRUE)) %>%
+  filter(!is.na(avg_max_temp)) %>%
+  filter(month == "01" | month == "07") %>%
+  mutate(month = case_when(month ==  "01" ~ "January",
+      month ==  "07" ~ "July"))
+
+plot_avgtmax <- avgtmax_df %>%
+  ggplot(aes(year, avg_max_temp, group = id, color = id)) +
+  geom_line(alpha = 0.3) +
+  theme(legend.position = "none") +
+  facet_grid(. ~ month)
+plot_avgtmax
+```
+
+## Make a two-panel plot showing (i) tmax vs tmin for the full dataset (note that a scatterplot may not be the best option); and (ii) make a plot showing the distribution of snowfall values greater than 0 and less than 100 separately by year.
+```{r}
+# (i) Create plot of tmax  (y axis) vs tmin (x axis)
+tmax_tmin_plot <- ny_noaa_tidy %>%
+  ggplot(aes(tmin, tmax)) +
+  geom_hex()
+# (ii) density plot
+snwfall_plot <- ny_noaa_tidy %>%
+  filter(0 < snow & snow < 100) %>%
+  mutate(year = as.factor(year)) %>%
+  ggplot(aes(x = snow, y = year)) +
+  geom_density_ridges(alpha = .2)
+  
+tmax_tmin_plot + snwfall_plot
+```
+
